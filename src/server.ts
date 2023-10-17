@@ -1,21 +1,29 @@
 import express, { Request, Response } from "express";
 import { createServer, Server as HttpServer } from "http";
 import { Server, Socket } from "socket.io";
-import cors from "cors";
+import dotenv from "dotenv";
+// import cors from "cors";
 import * as controllers from "./controllers";
 
+dotenv.config();
 export interface SocketList {
   [key: string]: { userName: string; video: boolean; audio: boolean };
 }
 
 const app = express();
-const httpServer: HttpServer = createServer(app);
-export const io: Server = new Server(httpServer);
+// app.use(cors());
 
 const socketList: SocketList = {};
 const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
+const CLIENT_DOMAIN: string = process.env.CLIENT_DOMAIN?.toString() || "http://localhost:3000";
 
-app.use(cors());
+const httpServer: HttpServer = createServer(app);
+export const io: Server = new Server(httpServer, {
+  cors: {
+    origin: CLIENT_DOMAIN,
+    credentials: true,
+  },
+});
 
 app.get("/", (req: Request, res: Response) => {
   res.send("Server is running.");
