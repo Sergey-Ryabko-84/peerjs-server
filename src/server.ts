@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 import { createServer, Server as HttpServer } from "http";
 import { Server, Socket } from "socket.io";
-import path from "path";
+import cors from "cors";
 import * as controllers from "./controllers";
 
 export interface SocketList {
@@ -14,6 +14,8 @@ export const io: Server = new Server(httpServer);
 
 const socketList: SocketList = {};
 const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
+
+app.use(cors());
 
 app.get("/", (req: Request, res: Response) => {
   res.send("Server is running.");
