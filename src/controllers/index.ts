@@ -13,27 +13,22 @@ export const disconnect = (socket: Socket) => {
 };
 
 export const checkUser = (socket: Socket, socketList: SocketList) => {
-  socket.on("BE-join-room", async ({ roomId, userName }) => {
-    // Socket Join RoomName
-    socket.join(roomId);
-    socketList[socket.id] = { userName, video: true, audio: true };
+  socket.on("BE-check-user", async ({ roomId, userName }) => {
+    let error = false;
 
     // Set User List
     try {
-      const roomSockets = await io.of("/").in(roomId).fetchSockets();
-      const users: Array<{
-        userId: string;
-        info: { userName: string; video: boolean; audio: boolean };
-      }> = [];
-
-      for (const client of roomSockets) {
-        const socketInfo = socketList[client.id];
-        if (socketInfo) {
-          users.push({ userId: client.id, info: socketInfo });
-        }
-      }
-
-      socket.to(roomId).emit("FE-user-join", users);
+      io.of("/")
+        .in(roomId)
+        .fetchSockets()
+        .then((sockets) => {
+          sockets.forEach((client) => {
+            if (socketList[client.id]?.userName === userName) {
+              error = true;
+            }
+          });
+          socket.emit("FE-error-user-exist", { error });
+        });
     } catch (error) {
       io.in(roomId).emit("FE-error-user-exist", { err: true });
     }
