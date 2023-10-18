@@ -2,7 +2,6 @@ import express, { Request, Response } from "express";
 import { createServer, Server as HttpServer } from "http";
 import { Server, Socket } from "socket.io";
 import dotenv from "dotenv";
-// import cors from "cors";
 import * as controllers from "./controllers";
 
 dotenv.config();
@@ -11,7 +10,6 @@ export interface SocketList {
 }
 
 const app = express();
-// app.use(cors());
 
 const socketList: SocketList = {};
 const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
@@ -20,7 +18,7 @@ const CLIENT_DOMAIN: string = process.env.CLIENT_DOMAIN?.toString() || "http://l
 const httpServer: HttpServer = createServer(app);
 export const io: Server = new Server(httpServer, {
   cors: {
-    origin: CLIENT_DOMAIN,
+    origin: "*",
     credentials: true,
   },
 });
