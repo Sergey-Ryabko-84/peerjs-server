@@ -1,108 +1,101 @@
 import { Socket } from "socket.io";
-import { io, SocketList } from "../server";
+import { v4 as uuidV4 } from "uuid";
 
-export const disconnect = (socket: Socket) => {
-  socket.on("disconnect", () => {
-    try {
-      socket.disconnect();
-      console.log("User disconnected!");
-    } catch (err) {
-      console.log("Error in disconnect: ", err);
-    }
-  });
-};
+const rooms: Record<string, Record<string, IUser>> = {};
+const chats: Record<string, IMessage[]> = {};
+interface IUser {
+  peerId: string;
+  userName: string;
+}
+interface IRoomParams {
+  roomId: string;
+  peerId: string;
+}
 
-export const checkUser = (socket: Socket, socketList: SocketList) => {
-  socket.on("BE-check-user", async ({ roomId, userName }) => {
-    let error = false;
+interface IJoinRoomParams extends IRoomParams {
+  userName: string;
+}
+interface IMessage {
+  content: string;
+  author?: string;
+  timestamp: number;
+}
 
-    // Set User List
-    try {
-      io.of("/")
-        .in(roomId)
-        .fetchSockets()
-        .then((sockets) => {
-          sockets.forEach((client) => {
-            if (socketList[client.id]?.userName === userName) {
-              error = true;
-            }
-          });
-          socket.emit("FE-error-user-exist", { error });
-        });
-    } catch (error) {
-      io.in(roomId).emit("FE-error-user-exist", { err: true });
-    }
-  });
-};
+export const controllers = (socket: Socket) => {
+  const createRoom = () => {
+    const roomId = uuidV4();
+    rooms[roomId] = {};
 
-export const joinRoom = (socket: Socket, socketList: SocketList) => {
-  socket.on("BE-join-room", async ({ roomId, userName }) => {
-    // Socket Join RoomName
+    socket.emit("room-created", { roomId });
+    console.log("User created the room");
+  };
+
+  const joinRoom = ({ roomId, peerId, userName }: IJoinRoomParams) => {
+    if (!rooms[roomId]) rooms[roomId] = {};
+    if (!chats[roomId]) chats[roomId] = [];
+
+    socket.emit("get-messages", chats[roomId]);
+    console.log("User joined the room", roomId, peerId, userName);
+
+    rooms[roomId][peerId] = { peerId, userName };
+
     socket.join(roomId);
-    socketList[socket.id] = { userName, video: true, audio: true };
-
-    // Set User List
-    try {
-      const roomSockets = await io.of("/").in(roomId).fetchSockets();
-      const users: Array<{
-        userId: string;
-        info: { userName: string; video: boolean; audio: boolean };
-      }> = [];
-
-      for (const client of roomSockets) {
-        const socketInfo = socketList[client.id];
-        if (socketInfo) {
-          users.push({ userId: client.id, info: socketInfo });
-        }
-      }
-
-      socket.to(roomId).emit("FE-user-join", users);
-    } catch (error) {
-      io.in(roomId).emit("FE-error-user-exist", { err: true });
-    }
-  });
-};
-
-export const callUser = (socket: Socket, socketList: SocketList) => {
-  socket.on("BE-call-user", ({ userToCall, from, signal }) => {
-    io.to(userToCall).emit("FE-receive-call", {
-      signal,
-      from,
-      info: socketList[socket.id],
+    socket.to(roomId).emit("user-joined", { peerId, userName });
+    socket.emit("get-users", {
+      roomId,
+      participants: rooms[roomId],
     });
-  });
-};
 
-export const acceptCall = (socket: Socket) => {
-  socket.on("BE-accept-call", ({ signal, to }) => {
-    io.to(to).emit("FE-call-accepted", {
-      signal,
-      answerId: socket.id,
+    socket.on("disconnect", () => {
+      leaveRoom({ roomId, peerId });
+      console.log("User left the room", peerId);
     });
-  });
-};
+  };
 
-export const sendMessage = (socket: Socket) => {
-  socket.on("BE-send-message", ({ roomId, msg, sender }) => {
-    io.in(roomId).emit("FE-receive-message", { msg, sender });
-  });
-};
+  const leaveRoom = ({ peerId, roomId }: IRoomParams) => {
+    // rooms[roomId] = rooms[roomId]?.filter((id) => id !== peerId);
+    socket.to(roomId).emit("user-disconnected", peerId);
+  };
 
-export const leaveRoom = (socket: Socket, socketList: SocketList) => {
-  socket.on("BE-leave-room", ({ roomId, leaver }) => {
-    delete socketList[socket.id];
-    socket.to(roomId).emit("FE-user-leave", { userId: socket.id, userName: [socket.id] });
-    socket.leave(roomId);
-  });
-};
+  const startSharing = ({ peerId, roomId }: IRoomParams) => {
+    socket.to(roomId).emit("user-started-sharing", peerId);
+    console.log("User started sharing", { roomId, peerId });
+  };
 
-export const toggleCameraAudio = (socket: Socket, socketList: SocketList) => {
-  socket.on("BE-toggle-camera-audio", ({ roomId, switchTarget }) => {
-    if (switchTarget === "video") {
-      socketList[socket.id].video = !socketList[socket.id].video;
+  const stopSharing = (roomId: string) => {
+    socket.to(roomId).emit("user-stopped-sharing");
+  };
+
+  const addMessage = (roomId: string, message: IMessage) => {
+    if (chats[roomId]) {
+      chats[roomId].push(message);
     } else {
-      socketList[socket.id].audio = !socketList[socket.id].audio;
+      chats[roomId] = [message];
     }
-    socket.to(roomId).emit("FE-toggle-camera", { userId: socket.id, switchTarget });
-  });
+
+    socket.to(roomId).emit("add-message", message);
+    console.log("add message:", { message });
+  };
+
+  const changeName = ({
+    peerId,
+    userName,
+    roomId,
+  }: {
+    peerId: string;
+    userName: string;
+    roomId: string;
+  }) => {
+    if (rooms[roomId] && rooms[roomId][peerId]) {
+      rooms[roomId][peerId].userName = userName;
+      socket.to(roomId).emit("name-changed", { peerId, userName });
+    }
+  };
+
+  socket.on("create-room", createRoom);
+  socket.on("join-room", joinRoom);
+  socket.on("start-sharing", startSharing);
+  socket.on("stop-sharing", stopSharing);
+  socket.on("send-message", addMessage);
+  socket.on("change-name", changeName);
 };
