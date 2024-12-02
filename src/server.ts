@@ -10,11 +10,16 @@ const PORT = process.env.PORT || 8080;
 
 const app = express();
 
+app.use(
+  cors({
+    origin: "*",
+    credentials: true,
+  })
+);
+
 app.get("/", (req: Request, res: Response) => {
   res.send("Server is running.");
 });
-
-app.use(cors);
 
 const httpServer: HttpServer = createServer(app);
 
